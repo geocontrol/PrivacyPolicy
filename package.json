@@ -16,9 +16,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@types/cytoscape": "^3.21.9",
     "axios": "^1.7.0",
     "better-sqlite3": "^11.0.0",
     "cheerio": "^1.0.0",
+    "cytoscape": "^3.33.1",
     "express": "^4.19.0"
   },
   "devDependencies": {

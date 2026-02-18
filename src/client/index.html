@@ -4,12 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Privacy Policy Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="app">
-      <h1>Privacy Policy Dashboard</h1>
-      <p>Loading...</p>
+      <header class="header">
+        <span class="header__logo">🔍 Privacy Dashboard</span>
+        <nav class="nav">
+          <button class="nav__btn nav__btn--active" data-view="services">Services</button>
+          <button class="nav__btn" data-view="supply-chain">Supply Chain</button>
+          <button class="nav__btn" data-view="third-parties">Third Parties</button>
+        </nav>
+      </header>
+
+      <main class="main">
+        <!-- Views — only one visible at a time via .view--active -->
+        <section id="view-services" class="view view--active"></section>
+        <section id="view-supply-chain" class="view"></section>
+        <section id="view-third-parties" class="view"></section>
+      </main>
     </div>
+
+    <!-- Slide-in detail panel for a single service -->
+    <aside id="detail-panel" class="detail-panel">
+      <button id="detail-close" class="detail-panel__close">✕</button>
+      <div id="detail-content" class="detail-panel__content"></div>
+    </aside>
+    <div id="detail-overlay" class="overlay"></div>
+
     <script type="module" src="./app.ts"></script>
   </body>
 </html>
