@@ -1,6 +1,6 @@
 // @ts-ignore
 import Cytoscape from 'cytoscape'
-import { api, Service, ApiError } from '../api.js'
+import { api, Service, ApiError } from '../api.ts'
 
 let cy: Cytoscape.Core | null = null
 let services: Service[] = []

@@ -1,4 +1,4 @@
-import { api, Service, ApiError } from '../api.js'
+import { api, Service, ApiError } from '../api.ts'
 
 let services: Service[] = []
 let onSelectService: (id: string) => void
@@ -15,18 +15,18 @@ function formatDate(dateStr: string): string {
   })
 }
 
-// Render the services list
-function renderServices(container: HTMLElement) {
+// Render the services list into the dedicated list container
+function renderServices(listContainer: HTMLElement) {
   if (services.length === 0) {
-    container.innerHTML = `
+    listContainer.innerHTML = `
       <div class="empty-state">
-        <p>No services registered yet. Add one below to get started.</p>
+        <p>No services registered yet. Add one above to get started.</p>
       </div>
     `
     return
   }
 
-  container.innerHTML = `
+  listContainer.innerHTML = `
     <div>
       ${services
         .map(
@@ -51,9 +51,14 @@ function renderServices(container: HTMLElement) {
   `
 
   // Attach event listeners to action buttons
-  container.querySelectorAll('[data-action]').forEach((btn) => {
+  listContainer.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', handleAction)
   })
+}
+
+// Get the stable list container (created once in mount)
+function getListContainer(): HTMLElement {
+  return document.getElementById('services-list')!
 }
 
 // Handle service row actions
@@ -91,7 +96,7 @@ async function handleFetch(serviceId: string, btn: HTMLButtonElement, errorEl: E
     if (idx >= 0) {
       services[idx] = updatedService
     }
-    await renderServices(document.getElementById('view-services')!)
+    renderServices(getListContainer())
   } catch (err) {
     const error = err as ApiError
     if (errorEl) {
@@ -122,7 +127,7 @@ async function handleAnalyse(serviceId: string, btn: HTMLButtonElement, errorEl:
     if (idx >= 0) {
       services[idx] = updatedService
     }
-    await renderServices(document.getElementById('view-services')!)
+    renderServices(getListContainer())
   } catch (err) {
     const error = err as ApiError
     if (errorEl) {
@@ -147,7 +152,7 @@ async function handleDelete(serviceId: string, btn: HTMLButtonElement, errorEl: 
   try {
     await api.services.delete(serviceId)
     services = services.filter((s) => s.id !== serviceId)
-    await renderServices(document.getElementById('view-services')!)
+    renderServices(getListContainer())
   } catch (err) {
     const error = err as ApiError
     if (errorEl) {
@@ -186,7 +191,7 @@ function renderForm(container: HTMLElement) {
     </div>
   `
 
-  container.insertAdjacentHTML('beforeend', formHtml)
+  container.innerHTML = formHtml
 
   const form = document.getElementById('add-service-form')!
   form.addEventListener('submit', handleAddService)
@@ -217,7 +222,7 @@ async function handleAddService(event: Event) {
   try {
     const newService = await api.services.create({ name, url, category })
     services.push(newService)
-    await renderServices(document.getElementById('view-services')!)
+    renderServices(getListContainer())
     form.reset()
     successEl.textContent = 'Service added successfully!'
     setTimeout(() => {
@@ -243,15 +248,22 @@ function escapeHtml(str: string): string {
 export async function mount(container: HTMLElement, onSelect: (id: string) => void) {
   onSelectService = onSelect
 
-  // Render the form first
-  renderForm(container)
+  // Set up stable layout: form section + list section (neither overwrites the other)
+  container.innerHTML = `
+    <div id="services-form-area"></div>
+    <div id="services-list"></div>
+  `
 
-  // Load and render services
+  // Render the form into its dedicated area
+  const formArea = document.getElementById('services-form-area')!
+  renderForm(formArea)
+
+  // Load and render services into the list area
   try {
     services = await api.services.list()
-    renderServices(container)
+    renderServices(getListContainer())
   } catch (err) {
     const error = err as ApiError
-    container.innerHTML = `<div class="empty-state"><p>Error loading services: ${escapeHtml(error.message)}</p></div>`
+    getListContainer().innerHTML = `<div class="empty-state"><p>Error loading services: ${escapeHtml(error.message)}</p></div>`
   }
 }

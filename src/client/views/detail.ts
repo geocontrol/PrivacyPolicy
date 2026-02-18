@@ -1,4 +1,4 @@
-import { api, PolicyAnalysis } from '../api.js'
+import { api, PolicyAnalysis } from '../api.ts'
 
 let currentServiceId: string | null = null
 

@@ -1,4 +1,4 @@
-import { api, ThirdParty, ApiError } from '../api.js'
+import { api, ThirdParty, ApiError } from '../api.ts'
 
 let thirdParties: ThirdParty[] = []
 
