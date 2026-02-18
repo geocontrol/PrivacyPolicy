@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getDb } from './db/schema.js'
 import { servicesRouter } from './routes/services.js'
+import { analysesRouter } from './routes/analyses.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT ?? 3000
@@ -18,8 +19,8 @@ getDb()
 
 // Routes
 app.use('/api/services', servicesRouter)
-// app.use('/api/analyses', analysesRouter)  — coming next
-// app.use('/api/graph', graphRouter)        — coming next
+app.use('/api/analyses', analysesRouter)
+// app.use('/api/graph', graphRouter)  — coming next
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' })
