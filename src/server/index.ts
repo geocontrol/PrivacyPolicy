@@ -2,6 +2,7 @@ import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getDb } from './db/schema.js'
+import { servicesRouter } from './routes/services.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT ?? 3000
@@ -15,11 +16,10 @@ app.use(express.static(path.resolve(__dirname, '../../dist/client')))
 // Initialise DB on startup
 getDb()
 
-// Routes (to be added)
-// app.use('/api/services', servicesRouter)
-// app.use('/api/documents', documentsRouter)
-// app.use('/api/analyses', analysesRouter)
-// app.use('/api/graph', graphRouter)
+// Routes
+app.use('/api/services', servicesRouter)
+// app.use('/api/analyses', analysesRouter)  — coming next
+// app.use('/api/graph', graphRouter)        — coming next
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' })
