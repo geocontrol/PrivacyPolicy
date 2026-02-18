@@ -5,19 +5,47 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DB_PATH = path.resolve(__dirname, '../../../data/db.sqlite')
 
-let db: Database.Database
+let db: Database.Database | undefined
 
 export function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
     initialise(db)
   }
   return db
 }
 
+/**
+ * Replace the singleton DB instance. For test use only — allows tests to
+ * inject an in-memory database before any module calls getDb().
+ */
+export function setDb(instance: Database.Database): void {
+  db = instance
+}
+
+/**
+ * Clear the singleton so the next getDb() call re-initialises from DB_PATH.
+ * Call in test teardown (afterAll / afterEach).
+ */
+export function resetDb(): void {
+  db = undefined
+}
+
+/**
+ * Run the schema initialisation (CREATE TABLE IF NOT EXISTS, PRAGMAs, indexes)
+ * on the given database instance. Called automatically by getDb() on first use,
+ * but exposed here so tests can call it explicitly after setDb().
+ */
+export function initialiseDb(instance: Database.Database): void {
+  initialise(instance)
+}
+
 function initialise(db: Database.Database): void {
+  // WAL mode is incompatible with :memory: databases — skip it for in-memory instances
+  if (!db.memory) {
+    db.pragma('journal_mode = WAL')
+  }
+  db.pragma('foreign_keys = ON')
   db.exec(`
     CREATE TABLE IF NOT EXISTS services (
       id          TEXT PRIMARY KEY,
