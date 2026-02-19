@@ -7,6 +7,10 @@ import {
   SAMPLE_HOMEPAGE_HTML,
   SAMPLE_PRIVACY_HTML,
   HOMEPAGE_WITHOUT_PRIVACY_LINK,
+  HOMEPAGE_WITH_MODAL_POLICY,
+  HOMEPAGE_WITH_HIDDEN_POLICY_DIV,
+  HOMEPAGE_WITH_INLINE_POLICY_SECTION,
+  HOMEPAGE_WITH_RSC_POLICY,
   makePolicyDocument,
 } from '../../../tests/fixtures/index.js'
 
@@ -150,6 +154,117 @@ describe('crawlPolicyPage() — fallback path probing', () => {
       code: 'POLICY_NOT_FOUND',
     })
     await expect(crawlPolicyPage('https://notfound.com')).rejects.toBeInstanceOf(CrawlerError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// crawlPolicyPage — inline/modal policy detection
+// ---------------------------------------------------------------------------
+
+describe('crawlPolicyPage() — inline/modal policy detection', () => {
+  it('extracts policy content from a <dialog> element', async () => {
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_MODAL_POLICY })
+
+    const result = await crawlPolicyPage('https://modal-site.com')
+    expect(result.resolvedUrl).toBe('https://modal-site.com#privacy-dialog')
+    expect(result.text.toLowerCase()).toContain('privacy')
+    expect(result.text.toLowerCase()).toContain('cookies')
+    expect(result.html).toContain('<dialog')
+    expect(result.contentHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('extracts policy content from a hidden div[role="dialog"]', async () => {
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_HIDDEN_POLICY_DIV })
+
+    const result = await crawlPolicyPage('https://hidden-dialog.com')
+    expect(result.resolvedUrl).toBe('https://hidden-dialog.com#privacy-modal')
+    expect(result.text).toContain('personal data')
+    expect(result.html).toContain('role="dialog"')
+    expect(result.contentHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('extracts policy content from an in-page <section> linked via anchor', async () => {
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_INLINE_POLICY_SECTION })
+
+    const result = await crawlPolicyPage('https://section-site.com')
+    expect(result.resolvedUrl).toBe('https://section-site.com#privacy')
+    expect(result.text).toContain('data collection')
+    expect(result.contentHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('prefers an external link over inline content when both exist', async () => {
+    // Homepage has both a <a href="/privacy-policy"> AND a <dialog> with policy text
+    const homepageWithBoth = `<!DOCTYPE html>
+    <html><body>
+      <a href="/privacy-policy">Privacy Policy</a>
+      <dialog id="privacy-dialog">
+        <p>We collect personal data and use cookies for analytics.
+        This privacy policy covers GDPR compliance and data protection.
+        We retain data for two years and share with third party processors.</p>
+      </dialog>
+    </body></html>`
+
+    axios.get
+      .mockResolvedValueOnce({ data: homepageWithBoth })
+      .mockResolvedValueOnce({ data: SAMPLE_PRIVACY_HTML })
+
+    const result = await crawlPolicyPage('https://both-site.com')
+    expect(result.resolvedUrl).toBe('https://both-site.com/privacy-policy')
+  })
+
+  it('falls through to tryCommonPaths when inline content is too short', async () => {
+    const homepageWithShortModal = `<!DOCTYPE html>
+    <html><body>
+      <dialog id="cookie-notice"><p>We use cookies.</p></dialog>
+    </body></html>`
+
+    axios.get
+      .mockResolvedValueOnce({ data: homepageWithShortModal })
+      .mockResolvedValueOnce({ data: SAMPLE_PRIVACY_HTML })
+    axios.head.mockResolvedValueOnce({ status: 200 })
+
+    const result = await crawlPolicyPage('https://short-modal.com')
+    // Should have fallen through to common paths
+    expect(axios.head).toHaveBeenCalled()
+    expect(result.html).toBe(SAMPLE_PRIVACY_HTML)
+  })
+
+  it('produces a deterministic hash for inline content', async () => {
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_MODAL_POLICY })
+    const r1 = await crawlPolicyPage('https://modal-site.com')
+
+    vi.clearAllMocks()
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_MODAL_POLICY })
+    const r2 = await crawlPolicyPage('https://modal-site.com')
+
+    expect(r1.contentHash).toBe(r2.contentHash)
+  })
+
+  it('extracts policy from Next.js RSC <script> payload', async () => {
+    axios.get.mockResolvedValueOnce({ data: HOMEPAGE_WITH_RSC_POLICY })
+
+    const result = await crawlPolicyPage('https://rsc-site.com')
+    expect(result.resolvedUrl).toBe('https://rsc-site.com#embedded-policy')
+    expect(result.text.toLowerCase()).toContain('privacy')
+    expect(result.text.toLowerCase()).toContain('personal data')
+    expect(result.text.toLowerCase()).toContain('cookies')
+    expect(result.contentHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('falls through to common paths when script content has insufficient keywords', async () => {
+    const homepageWithWeakScript = `<!DOCTYPE html>
+    <html><body>
+      <script>self.__next_f.push([1,"\\"children\\":\\"Hello world, this is some generic text without policy keywords.\\""])</script>
+    </body></html>`
+
+    axios.get
+      .mockResolvedValueOnce({ data: homepageWithWeakScript })
+      .mockResolvedValueOnce({ data: SAMPLE_PRIVACY_HTML })
+    axios.head.mockResolvedValueOnce({ status: 200 })
+
+    const result = await crawlPolicyPage('https://weak-script.com')
+    expect(axios.head).toHaveBeenCalled()
+    expect(result.html).toBe(SAMPLE_PRIVACY_HTML)
   })
 })
 

@@ -147,6 +147,91 @@ export const SAMPLE_PRIVACY_HTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+/** A homepage with a privacy policy inside a <dialog> element */
+export const HOMEPAGE_WITH_MODAL_POLICY = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Modal Policy Site</title></head>
+<body>
+  <main><h1>Welcome</h1><p>Our main content.</p></main>
+  <button data-target="#privacy-dialog">Privacy Policy</button>
+  <dialog id="privacy-dialog">
+    <h2>Privacy Policy</h2>
+    <p>We collect your email address and name when you register. We use cookies to
+    improve your experience. Your personal data is processed under GDPR legal bases
+    including consent and legitimate interest. Data retention is limited to 2 years
+    after account closure. We may share data with third party analytics providers
+    for the purpose of improving our service. You have the right to request data
+    protection measures including erasure and portability.</p>
+  </dialog>
+</body>
+</html>`
+
+/** A homepage with a hidden div[role="dialog"] containing a privacy policy (React-style) */
+export const HOMEPAGE_WITH_HIDDEN_POLICY_DIV = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Hidden Dialog Site</title></head>
+<body>
+  <main><h1>App</h1></main>
+  <div id="privacy-modal" role="dialog" aria-modal="true" aria-hidden="true" style="display:none">
+    <div class="modal-content">
+      <h2>Privacy Policy</h2>
+      <p>This privacy policy explains how we collect and use your personal data.
+      We collect information such as your name, email, and usage data. Cookies are
+      used to remember your preferences. Under GDPR and data protection law, you
+      have rights including access, rectification, and erasure. Our data retention
+      period is 12 months. We work with third party processors for analytics and
+      payment services.</p>
+    </div>
+  </div>
+</body>
+</html>`
+
+/** A homepage with a <section id="privacy"> linked via an in-page anchor */
+export const HOMEPAGE_WITH_INLINE_POLICY_SECTION = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Inline Section Site</title></head>
+<body>
+  <nav>
+    <a href="#about">About</a>
+    <a href="#privacy">Privacy Policy</a>
+    <a href="#contact">Contact</a>
+  </nav>
+  <section id="about"><h2>About Us</h2><p>We make things.</p></section>
+  <section id="privacy">
+    <h2>Privacy Policy</h2>
+    <p>Your privacy matters to us. This section describes our data collection
+    practices. We collect your email address when you sign up and use cookies
+    for analytics. Personal data is handled in accordance with GDPR. We engage
+    third party services for hosting and analytics. Data retention is governed
+    by our internal policy and limited to the period necessary for the stated
+    purposes. We implement data protection measures to safeguard your information.</p>
+  </section>
+  <section id="contact"><h2>Contact</h2><p>Email us.</p></section>
+</body>
+</html>`
+
+/** A homepage with a Next.js RSC script payload containing privacy policy text */
+export const HOMEPAGE_WITH_RSC_POLICY = `<!DOCTYPE html>
+<html lang="en">
+<head><title>RSC App</title></head>
+<body>
+  <div id="__next"></div>
+  <script>self.__next_f.push([1,"${
+    [
+      'Privacy Policy. ',
+      'We collect your personal data including your email address and name when you register. ',
+      'We use cookies to improve your experience and for analytics purposes. ',
+      'Your data is processed under GDPR legal bases including consent and legitimate interest. ',
+      'Data retention is limited to 2 years after account closure. ',
+      'We may share data with third party analytics providers. ',
+      'You have the right to request data protection measures including erasure and portability.',
+    ]
+      .map(t => `\\"children\\":\\"${t}\\"`)
+      .join(',\\"type\\":\\"p\\",')
+  }"])</script>
+</body>
+</html>`
+
 /** A valid JSON string matching the shape the analyser's ANALYSIS_PROMPT requests */
 export const SAMPLE_LLM_RESPONSE_JSON = JSON.stringify({
   summary: 'Example Service collects email and name for service delivery. Analytics are provided by Google Analytics.',
