@@ -51,8 +51,33 @@ export function getAllServices(): Service[] {
     .all() as Service[]
 }
 
+export function findServiceByNormalizedDomain(domain: string): Service | undefined {
+  const target = normaliseHostname(domain)
+  if (!target) return undefined
+
+  return getAllServices().find((service) => {
+    const serviceDomain = extractNormalisedDomain(service.url)
+    return serviceDomain === target
+  })
+}
+
 export function deleteService(id: string): void {
   getDb().prepare('DELETE FROM services WHERE id = ?').run(id)
+}
+
+function extractNormalisedDomain(input: string): string | null {
+  try {
+    const value = input.startsWith('http') ? input : `https://${input}`
+    return normaliseHostname(new URL(value).hostname)
+  } catch {
+    return null
+  }
+}
+
+function normaliseHostname(hostname: string): string | null {
+  const trimmed = hostname.trim().toLowerCase()
+  if (!trimmed) return null
+  return trimmed.replace(/^www\./, '')
 }
 
 // ---------------------------------------------------------------------------

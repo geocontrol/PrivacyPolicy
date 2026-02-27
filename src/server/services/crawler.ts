@@ -1,5 +1,6 @@
 import axios from 'axios'
 import * as cheerio from 'cheerio'
+import type { AnyNode } from 'domhandler'
 import { createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -228,9 +229,9 @@ async function tryCommonPaths(baseUrl: string): Promise<string | null> {
 function findInlinePolicyContent(html: string): InlinePolicyResult | null {
   const $ = cheerio.load(html)
 
-  const candidates: Array<{ el: cheerio.Element; score: number; anchorId: string }> = []
+  const candidates: Array<{ el: AnyNode; score: number; anchorId: string }> = []
 
-  function scoreElement(el: cheerio.Element): number {
+  function scoreElement(el: AnyNode): number {
     const text = $(el).text().replace(/\s+/g, ' ').trim()
     if (text.length < MIN_INLINE_POLICY_LENGTH) return -1
     const matches = INLINE_PRIVACY_KEYWORDS.reduce(
@@ -239,7 +240,7 @@ function findInlinePolicyContent(html: string): InlinePolicyResult | null {
     return matches >= MIN_KEYWORD_MATCHES ? matches : -1
   }
 
-  function addCandidate(el: cheerio.Element, anchorId: string) {
+  function addCandidate(el: AnyNode, anchorId: string) {
     const score = scoreElement(el)
     if (score > 0) candidates.push({ el, score, anchorId })
   }

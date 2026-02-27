@@ -60,6 +60,109 @@ npm run client:dev
 
 Then open `http://localhost:5173` in your browser.
 
+## Run with Docker Compose
+
+### Prerequisites
+
+- Docker Desktop (or Docker Engine + Compose plugin)
+- A populated `.env` file (copy from `.env.example`)
+
+### Start
+
+```bash
+docker compose up --build
+```
+
+App URL: `http://localhost:3000`
+
+### Stop
+
+```bash
+docker compose down
+```
+
+### Rebuild
+
+```bash
+docker compose build
+docker compose up
+```
+
+### Data persistence
+
+Compose mounts `./data` into `/app/data` in the container. This keeps:
+
+- SQLite DB at `./data/db.sqlite`
+- Retrieved policy files at `./data/policies`
+
+### Environment and secrets
+
+- Compose loads environment variables from `.env` (`env_file`).
+- Keep `.env` out of version control.
+- `ANTHROPIC_API_KEY` is required for policy analysis.
+- `EXTENSION_API_TOKEN` is optional unless you use the extension signup endpoint.
+
+### Troubleshooting
+
+- Port conflict on `3000`: stop the process using the port or change the host mapping in `docker-compose.yml`.
+- Permission errors on `./data`: ensure your local user has read/write access to the `data` directory.
+- Analysis fails with config errors: verify `ANTHROPIC_API_KEY` is set in `.env`.
+
+## Browser extension signup endpoint
+
+Set `EXTENSION_API_TOKEN` in your `.env` file. Browser extension requests must send the same value in the `x-extension-token` header.
+
+Endpoint:
+
+- `POST /api/integrations/extension/signup`
+
+Headers:
+
+- `x-extension-token: <EXTENSION_API_TOKEN>`
+- `Content-Type: application/json`
+
+Request body:
+
+```json
+{
+  "url": "https://example.com/signup",
+  "name": "Example",
+  "category": "Technology"
+}
+```
+
+Behavior:
+
+- Upserts a service by normalized domain
+- Fetches the latest privacy policy document
+- Runs policy analysis
+- Returns `201` when a new service is created, `200` when an existing service is reused
+
+Response shape:
+
+```json
+{
+  "service": {
+    "id": "svc-...",
+    "name": "Example",
+    "url": "example.com",
+    "category": "Technology",
+    "created_at": "2024-01-01 00:00:00",
+    "updated_at": "2024-01-01 00:00:00"
+  },
+  "created": true,
+  "fetch": {
+    "documentId": "doc-...",
+    "resolvedUrl": "https://example.com/privacy"
+  },
+  "analysis": {
+    "id": "ana-...",
+    "analysed_at": "2024-01-01 00:00:00"
+  },
+  "message": "Service added and processing complete"
+}
+```
+
 ## Documentation
 
 - [`docs/ideation-brief.md`](docs/ideation-brief.md) — project vision and requirements
