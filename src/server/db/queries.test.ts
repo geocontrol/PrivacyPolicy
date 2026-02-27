@@ -27,6 +27,12 @@ import {
   createDiscoveryRun,
   updateDiscoveryRunStatus,
   getLatestDiscoveryRunForService,
+  insertServiceSitemap,
+  getLatestSitemapForService,
+  replaceSitemapPages,
+  getSitemapPages,
+  markSitemapPagesSelected,
+  markSitemapPageCollected,
 } from './queries.js'
 import { makePolicyAnalysisResult } from '../../../tests/fixtures/index.js'
 
@@ -46,6 +52,8 @@ afterAll(() => {
 afterEach(() => {
   // Wipe all rows between tests — faster than recreating schema
   testDb.exec(`
+    DELETE FROM service_sitemap_pages;
+    DELETE FROM service_sitemaps;
     DELETE FROM legal_checklist_items;
     DELETE FROM service_resource_hubs;
     DELETE FROM service_discovery_runs;
@@ -469,5 +477,32 @@ describe('legal documents/checklists/resource hubs/discovery runs', () => {
     expect(latest?.status).toBe('partial')
     expect(latest?.stats_json).toContain('missingRequired')
     expect(latest?.finished_at).toBeTruthy()
+  })
+
+  it('stores latest sitemap and page statuses', () => {
+    const svc = insertService('Sitemap', 'https://sitemap.com')
+    const sitemap = insertServiceSitemap({
+      serviceId: svc.id,
+      sitemapUrl: 'https://sitemap.com/sitemap.xml',
+      filePath: '/tmp/sitemap.xml',
+      pageCount: 2,
+      status: 'retrieved',
+    })
+    replaceSitemapPages(sitemap.id, ['https://sitemap.com/privacy', 'https://sitemap.com/terms'])
+    markSitemapPagesSelected(sitemap.id, ['https://sitemap.com/privacy'])
+    markSitemapPageCollected({
+      sitemapId: sitemap.id,
+      url: 'https://sitemap.com/privacy',
+      analysed: true,
+    })
+
+    const latest = getLatestSitemapForService(svc.id)
+    expect(latest?.id).toBe(sitemap.id)
+    const pages = getSitemapPages(sitemap.id)
+    expect(pages).toHaveLength(2)
+    const privacy = pages.find((p) => p.url.endsWith('/privacy'))!
+    expect(privacy.selected).toBe(1)
+    expect(privacy.collected).toBe(1)
+    expect(privacy.analysed).toBe(1)
   })
 })

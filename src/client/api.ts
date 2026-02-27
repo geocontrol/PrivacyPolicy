@@ -109,6 +109,28 @@ export interface DiscoveryRun {
   stats_json: Record<string, unknown> | null
 }
 
+export interface ServiceSitemap {
+  id: string
+  service_id: string
+  sitemap_url: string
+  file_path: string
+  retrieved_at: string
+  page_count: number
+  status: string
+  message: string | null
+}
+
+export interface ServiceSitemapPage {
+  id: string
+  sitemap_id: string
+  url: string
+  selected: boolean
+  collected: boolean
+  analysed: boolean
+  last_error: string | null
+  last_collected_at: string | null
+}
+
 // API Error type
 export class ApiError extends Error {
   constructor(
@@ -176,6 +198,19 @@ export const api = {
       apiFetch<{ message: string }>(`/api/services/${id}/discover`, {
         method: 'POST',
       }),
+
+    sitemap: (id: string) =>
+      apiFetch<{ sitemap: ServiceSitemap; pages: ServiceSitemapPage[] }>(`/api/services/${id}/sitemap`),
+
+    collectSitemapPages: (id: string, body: { urls: string[]; analyse?: boolean }) =>
+      apiFetch<{ collected: number; analysed: number; failed: Array<{ url: string; error: string }> }>(
+        `/api/services/${id}/sitemap/collect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      ),
   },
 
   analyses: {

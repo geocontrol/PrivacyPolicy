@@ -9,6 +9,8 @@ import {
   createDiscoveryRun,
   getServiceById,
   insertOrUpdateLegalDocument,
+  insertServiceSitemap,
+  replaceSitemapPages,
   upsertLegalChecklistItem,
   upsertServiceResourceHub,
   updateDiscoveryRunStatus,
@@ -158,6 +160,8 @@ export async function runDiscovery(serviceId: string): Promise<void> {
         found: discovery.foundDocs.length,
         missingRequired: requiredMissing.map((m) => m.docType),
         hubs: discovery.resourceHubs.length,
+        sitemapStored: discovery.sitemap.stored,
+        sitemapUrlCount: discovery.sitemap.count,
       },
     })
   } catch (err) {
@@ -199,6 +203,7 @@ async function discoverDocuments(
 ): Promise<{
   foundDocs: Array<{ docType: string; documentId: string; discoveryMethod: string }>
   resourceHubs: Array<{ type: string; url: string; title?: string; confidence: number; notes?: string }>
+  sitemap: { stored: boolean; count: number }
 }> {
   const baseUrl = normaliseBaseUrl(service.url)
   const candidates = new Map<string, Candidate[]>()
@@ -235,7 +240,8 @@ async function discoverDocuments(
     }
   }
 
-  const sitemapUrls = await parseSitemapUrls(baseUrl)
+  const sitemapResult = await parseSitemapUrls(service, baseUrl)
+  const sitemapUrls = sitemapResult.urls
   for (const item of checklist) {
     const patterns = DOC_TYPE_PATTERNS[item.docType] ?? []
     for (const url of sitemapUrls) {
@@ -274,7 +280,11 @@ async function discoverDocuments(
     }
   }
 
-  return { foundDocs, resourceHubs: hubCandidates }
+  return {
+    foundDocs,
+    resourceHubs: hubCandidates,
+    sitemap: { stored: sitemapResult.stored, count: sitemapUrls.length },
+  }
 }
 
 async function targetedDiscovery(
@@ -526,18 +536,27 @@ function detectResourceHubs(
   return hubs
 }
 
-async function parseSitemapUrls(baseUrl: string): Promise<string[]> {
+async function parseSitemapUrls(
+  service: Service,
+  baseUrl: string,
+): Promise<{ urls: string[]; stored: boolean }> {
   const urls = [
     `${baseUrl}/sitemap.xml`,
     `${baseUrl}/sitemap_index.xml`,
   ]
 
   const discovered = new Set<string>()
+  let firstSitemapUrl: string | null = null
+  let firstSitemapXml = ''
 
   for (const url of urls) {
     try {
       const response = await axios.get<string>(url, { headers: HTTP_HEADERS, timeout: 8000 })
       const xml = response.data
+      if (!firstSitemapUrl) {
+        firstSitemapUrl = url
+        firstSitemapXml = xml
+      }
       const locs = xml.match(/<loc>(.*?)<\/loc>/g) || []
       for (const loc of locs) {
         const match = loc.match(/<loc>(.*?)<\/loc>/)
@@ -548,7 +567,31 @@ async function parseSitemapUrls(baseUrl: string): Promise<string[]> {
     }
   }
 
-  return [...discovered]
+  const parsedUrls = [...discovered]
+
+  if (!firstSitemapUrl || !firstSitemapXml) {
+    return { urls: parsedUrls, stored: false }
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const dir = path.resolve(__dirname, '../../../data/sitemaps', service.id)
+  await mkdir(dir, { recursive: true })
+  const filePath = path.join(dir, `${timestamp}.xml`)
+  await writeFile(filePath, firstSitemapXml, 'utf-8')
+
+  const sitemap = insertServiceSitemap({
+    serviceId: service.id,
+    sitemapUrl: firstSitemapUrl,
+    filePath,
+    pageCount: parsedUrls.length,
+    status: 'retrieved',
+    message: parsedUrls.length > 0
+      ? `Sitemap parsed with ${parsedUrls.length} URLs`
+      : 'Sitemap fetched but no URLs matched',
+  })
+  replaceSitemapPages(sitemap.id, parsedUrls)
+
+  return { urls: parsedUrls, stored: true }
 }
 
 function dedupeCandidates(candidates: Candidate[]): Candidate[] {

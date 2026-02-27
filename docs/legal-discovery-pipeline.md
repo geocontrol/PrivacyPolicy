@@ -17,6 +17,7 @@ The run attempts to find and store legal/compliance documents beyond only a priv
 3. Sitemap stage
    - Attempts to parse `sitemap.xml` and sitemap index files.
    - Scores sitemap URLs against legal-document patterns.
+   - Stores the raw sitemap XML locally for user review.
 4. Targeted fallback stage
    - Fetches shortlisted pages and validates text against doc-type patterns.
 
@@ -66,3 +67,11 @@ Raw discovered documents are saved under:
 - `GET /api/services/:id/checklist`
 - `GET /api/services/:id/discovery-runs/latest`
 - `POST /api/services/:id/discover`
+- `GET /api/services/:id/sitemap`
+- `POST /api/services/:id/sitemap/collect`
+
+## User-guided sitemap selection
+
+- The UI exposes a sitemap modal when a sitemap snapshot exists.
+- Users can select URLs with checkboxes.
+- Selected URLs are collected for local storage and can be sent through analysis.

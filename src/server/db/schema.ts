@@ -148,6 +148,29 @@ function initialise(db: Database.Database): void {
       stats_json  TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS service_sitemaps (
+      id            TEXT PRIMARY KEY,
+      service_id    TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      sitemap_url   TEXT NOT NULL,
+      file_path     TEXT NOT NULL,
+      retrieved_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      page_count    INTEGER NOT NULL DEFAULT 0,
+      status        TEXT NOT NULL DEFAULT 'retrieved',
+      message       TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS service_sitemap_pages (
+      id                TEXT PRIMARY KEY,
+      sitemap_id        TEXT NOT NULL REFERENCES service_sitemaps(id) ON DELETE CASCADE,
+      url               TEXT NOT NULL,
+      selected          INTEGER NOT NULL DEFAULT 0,
+      collected         INTEGER NOT NULL DEFAULT 0,
+      analysed          INTEGER NOT NULL DEFAULT 0,
+      last_error        TEXT,
+      last_collected_at TEXT,
+      UNIQUE(sitemap_id, url)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_policy_documents_service_id
       ON policy_documents(service_id);
 
@@ -171,5 +194,11 @@ function initialise(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_service_discovery_runs_service_started
       ON service_discovery_runs(service_id, started_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_service_sitemaps_service_retrieved
+      ON service_sitemaps(service_id, retrieved_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_service_sitemap_pages_sitemap
+      ON service_sitemap_pages(sitemap_id);
   `)
 }

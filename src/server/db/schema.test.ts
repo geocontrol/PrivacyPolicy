@@ -115,6 +115,27 @@ describe('table creation', () => {
     expect(names).toContain('stats_json')
   })
 
+  it('creates the service_sitemaps table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('service_sitemaps')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('sitemap_url')
+    expect(names).toContain('file_path')
+    expect(names).toContain('page_count')
+    expect(names).toContain('status')
+  })
+
+  it('creates the service_sitemap_pages table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('service_sitemap_pages')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('sitemap_id')
+    expect(names).toContain('url')
+    expect(names).toContain('selected')
+    expect(names).toContain('collected')
+    expect(names).toContain('analysed')
+  })
+
   it('is idempotent — calling getDb() twice does not throw', () => {
     expect(() => { getDb(); getDb() }).not.toThrow()
   })
@@ -151,6 +172,14 @@ describe('indexes', () => {
     expect(docIdx.some(i => i.name === 'idx_legal_documents_service_doc_type')).toBe(true)
     expect(docIdx.some(i => i.name === 'idx_legal_documents_service_content_hash')).toBe(true)
     expect(runIdx.some(i => i.name === 'idx_service_discovery_runs_service_started')).toBe(true)
+  })
+
+  it('creates sitemap indexes', () => {
+    getDb()
+    const sitemapIdx = testDb.prepare("PRAGMA index_list('service_sitemaps')").all() as Array<{ name: string }>
+    const pageIdx = testDb.prepare("PRAGMA index_list('service_sitemap_pages')").all() as Array<{ name: string }>
+    expect(sitemapIdx.some(i => i.name === 'idx_service_sitemaps_service_retrieved')).toBe(true)
+    expect(pageIdx.some(i => i.name === 'idx_service_sitemap_pages_sitemap')).toBe(true)
   })
 })
 

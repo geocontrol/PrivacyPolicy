@@ -73,6 +73,28 @@ export interface ServiceDiscoveryRun {
   stats_json: string | null
 }
 
+export interface ServiceSitemap {
+  id: string
+  service_id: string
+  sitemap_url: string
+  file_path: string
+  retrieved_at: string
+  page_count: number
+  status: string
+  message: string | null
+}
+
+export interface ServiceSitemapPage {
+  id: string
+  sitemap_id: string
+  url: string
+  selected: number
+  collected: number
+  analysed: number
+  last_error: string | null
+  last_collected_at: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Services
 // ---------------------------------------------------------------------------
@@ -428,6 +450,106 @@ function getDiscoveryRunById(id: string): ServiceDiscoveryRun | undefined {
   return getDb()
     .prepare('SELECT * FROM service_discovery_runs WHERE id = ?')
     .get(id) as ServiceDiscoveryRun | undefined
+}
+
+export function insertServiceSitemap(input: {
+  serviceId: string
+  sitemapUrl: string
+  filePath: string
+  pageCount: number
+  status?: string
+  message?: string
+}): ServiceSitemap {
+  const db = getDb()
+  const id = randomUUID()
+  db.prepare(`
+    INSERT INTO service_sitemaps
+      (id, service_id, sitemap_url, file_path, page_count, status, message)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.serviceId,
+    input.sitemapUrl,
+    input.filePath,
+    input.pageCount,
+    input.status ?? 'retrieved',
+    input.message ?? null,
+  )
+  return getServiceSitemapById(id)!
+}
+
+export function getLatestSitemapForService(serviceId: string): ServiceSitemap | undefined {
+  return getDb()
+    .prepare(`
+      SELECT * FROM service_sitemaps
+      WHERE service_id = ?
+      ORDER BY retrieved_at DESC
+      LIMIT 1
+    `)
+    .get(serviceId) as ServiceSitemap | undefined
+}
+
+export function replaceSitemapPages(sitemapId: string, urls: string[]): void {
+  const db = getDb()
+  const tx = db.transaction((values: string[]) => {
+    db.prepare('DELETE FROM service_sitemap_pages WHERE sitemap_id = ?').run(sitemapId)
+    const stmt = db.prepare(`
+      INSERT INTO service_sitemap_pages
+        (id, sitemap_id, url, selected, collected, analysed)
+      VALUES (?, ?, ?, 0, 0, 0)
+    `)
+    for (const url of values) {
+      stmt.run(randomUUID(), sitemapId, url)
+    }
+  })
+  tx(urls)
+}
+
+export function getSitemapPages(sitemapId: string): ServiceSitemapPage[] {
+  return getDb()
+    .prepare(`
+      SELECT * FROM service_sitemap_pages
+      WHERE sitemap_id = ?
+      ORDER BY url ASC
+    `)
+    .all(sitemapId) as ServiceSitemapPage[]
+}
+
+export function markSitemapPagesSelected(sitemapId: string, urls: string[]): void {
+  const db = getDb()
+  const tx = db.transaction((values: string[]) => {
+    db.prepare('UPDATE service_sitemap_pages SET selected = 0 WHERE sitemap_id = ?').run(sitemapId)
+    const stmt = db.prepare('UPDATE service_sitemap_pages SET selected = 1 WHERE sitemap_id = ? AND url = ?')
+    for (const url of values) {
+      stmt.run(sitemapId, url)
+    }
+  })
+  tx(urls)
+}
+
+export function markSitemapPageCollected(input: {
+  sitemapId: string
+  url: string
+  analysed: boolean
+  error?: string
+}): void {
+  getDb().prepare(`
+    UPDATE service_sitemap_pages
+    SET collected = ?, analysed = ?, last_error = ?, last_collected_at = datetime('now')
+    WHERE sitemap_id = ? AND url = ?
+  `).run(
+    input.error ? 0 : 1,
+    input.analysed ? 1 : 0,
+    input.error ?? null,
+    input.sitemapId,
+    input.url,
+  )
+}
+
+function getServiceSitemapById(id: string): ServiceSitemap | undefined {
+  return getDb()
+    .prepare('SELECT * FROM service_sitemaps WHERE id = ?')
+    .get(id) as ServiceSitemap | undefined
 }
 
 // ---------------------------------------------------------------------------

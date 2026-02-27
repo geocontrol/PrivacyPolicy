@@ -15,6 +15,7 @@ import {
   getResourceHubsForService,
 } from '../db/queries.js'
 import { fetchAndStorePolicyDocument } from '../services/crawler.js'
+import { collectSelectedSitemapPages, getLatestSitemapWithPages } from '../services/sitemap-collector.js'
 import { servicesRouter } from './services.js'
 import { makeService, makePolicyDocument } from '../../../tests/fixtures/index.js'
 
@@ -60,6 +61,11 @@ vi.mock('../services/legal-discovery.js', () => ({
   enqueueDiscovery: vi.fn(),
 }))
 
+vi.mock('../services/sitemap-collector.js', () => ({
+  collectSelectedSitemapPages: vi.fn(),
+  getLatestSitemapWithPages: vi.fn(),
+}))
+
 const mockedGetAllServices = getAllServices as MockedFunction<typeof getAllServices>
 const mockedGetServiceById = getServiceById as MockedFunction<typeof getServiceById>
 const mockedInsertService = insertService as MockedFunction<typeof insertService>
@@ -71,6 +77,8 @@ const mockedGetLegalChecklistForService = getLegalChecklistForService as MockedF
 const mockedGetLatestDiscoveryRunForService = getLatestDiscoveryRunForService as MockedFunction<typeof getLatestDiscoveryRunForService>
 const mockedGetResourceHubsForService = getResourceHubsForService as MockedFunction<typeof getResourceHubsForService>
 const mockedFetchAndStore = fetchAndStorePolicyDocument as MockedFunction<typeof fetchAndStorePolicyDocument>
+const mockedCollectSelectedSitemapPages = collectSelectedSitemapPages as MockedFunction<typeof collectSelectedSitemapPages>
+const mockedGetLatestSitemapWithPages = getLatestSitemapWithPages as MockedFunction<typeof getLatestSitemapWithPages>
 
 // ---------------------------------------------------------------------------
 // App setup
@@ -420,5 +428,89 @@ describe('GET /:id/discovery-runs/latest', () => {
     expect(res.status).toBe(200)
     expect(res.body.id).toBe('run-1')
     expect(res.body.stats_json.found).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /:id/sitemap
+// ---------------------------------------------------------------------------
+
+describe('GET /:id/sitemap', () => {
+  it('returns 404 when service does not exist', async () => {
+    mockedGetServiceById.mockReturnValue(undefined)
+    const res = await supertest(app).get('/missing/sitemap')
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 404 when no sitemap exists', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLatestSitemapWithPages.mockResolvedValue({ sitemap: undefined, pages: [] })
+    const res = await supertest(app).get('/svc-test-id-001/sitemap')
+    expect(res.status).toBe(404)
+  })
+
+  it('returns latest sitemap and pages with boolean flags', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLatestSitemapWithPages.mockResolvedValue({
+      sitemap: {
+        id: 'sm-1',
+        service_id: 'svc-test-id-001',
+        sitemap_url: 'https://example.com/sitemap.xml',
+        file_path: '/tmp/sitemap.xml',
+        retrieved_at: '2024-01-01 00:00:00',
+        page_count: 2,
+        status: 'retrieved',
+        message: null,
+      },
+      pages: [{
+        id: 'sp-1',
+        sitemap_id: 'sm-1',
+        url: 'https://example.com/privacy',
+        selected: 1,
+        collected: 0,
+        analysed: 0,
+        last_error: null,
+        last_collected_at: null,
+      }],
+    })
+
+    const res = await supertest(app).get('/svc-test-id-001/sitemap')
+    expect(res.status).toBe(200)
+    expect(res.body.sitemap.id).toBe('sm-1')
+    expect(res.body.pages[0].selected).toBe(true)
+    expect(res.body.pages[0].collected).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/sitemap/collect
+// ---------------------------------------------------------------------------
+
+describe('POST /:id/sitemap/collect', () => {
+  it('returns 400 when urls are missing', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    const res = await supertest(app).post('/svc-test-id-001/sitemap/collect').send({})
+    expect(res.status).toBe(400)
+  })
+
+  it('collects selected pages and returns summary', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedCollectSelectedSitemapPages.mockResolvedValue({
+      collected: 2,
+      analysed: 1,
+      failed: [],
+    })
+
+    const res = await supertest(app)
+      .post('/svc-test-id-001/sitemap/collect')
+      .send({ urls: ['https://example.com/privacy', 'https://example.com/terms'], analyse: true })
+
+    expect(res.status).toBe(201)
+    expect(res.body.collected).toBe(2)
+    expect(mockedCollectSelectedSitemapPages).toHaveBeenCalledWith({
+      serviceId: 'svc-test-id-001',
+      urls: ['https://example.com/privacy', 'https://example.com/terms'],
+      analyse: true,
+    })
   })
 })

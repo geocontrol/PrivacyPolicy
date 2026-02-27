@@ -1,6 +1,7 @@
-import { api, ChecklistItem, LegalDocument, ResourceHub, DiscoveryRun } from '../api.ts'
+import { api, ChecklistItem, LegalDocument, ResourceHub, DiscoveryRun, ServiceSitemapPage } from '../api.ts'
 
 let currentServiceId: string | null = null
+let sitemapPages: ServiceSitemapPage[] = []
 
 // Category to colour mapping for tags
 const CATEGORY_TAG_MAP: Record<string, string> = {
@@ -81,6 +82,7 @@ async function renderDetail(serviceId: string) {
     let legalDocsHtml = '<p class="text-muted">No legal documents discovered yet.</p>'
     let resourceHubsHtml = '<p class="text-muted">No resource hubs detected yet.</p>'
     let discoveryRunHtml = '<p class="text-muted">No discovery run has been started yet.</p>'
+    let sitemapHtml = '<p class="text-muted">No sitemap has been discovered yet.</p>'
 
     try {
       const checklist = await api.services.checklist(serviceId)
@@ -102,6 +104,21 @@ async function renderDetail(serviceId: string) {
       discoveryRunHtml = renderDiscoveryRun(run)
     } catch {
       // No run yet.
+    }
+
+    try {
+      const sitemap = await api.services.sitemap(serviceId)
+      sitemapPages = sitemap.pages
+      sitemapHtml = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div style="font-size:12px;color:var(--colour-text-muted);">
+            ${sitemap.sitemap.page_count} URLs from ${escapeHtml(sitemap.sitemap.sitemap_url)}
+          </div>
+          <button id="open-sitemap-modal" class="btn btn--sm">Open Sitemap Selector</button>
+        </div>
+      `
+    } catch {
+      sitemapPages = []
     }
 
     if (service.latestDocument) {
@@ -179,6 +196,11 @@ async function renderDetail(serviceId: string) {
 
       <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
 
+      <h4>Sitemap</h4>
+      ${sitemapHtml}
+
+      <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
+
       <h4>Legal Documents Checklist</h4>
       ${checklistHtml}
 
@@ -196,6 +218,8 @@ async function renderDetail(serviceId: string) {
 
       ${documentHistoryHtml}
     `
+
+    document.getElementById('open-sitemap-modal')?.addEventListener('click', openSitemapModal)
   } catch (err) {
     detailContent.innerHTML = `
       <h2>Error Loading Service</h2>
@@ -203,6 +227,78 @@ async function renderDetail(serviceId: string) {
     `
   }
 }
+
+async function openSitemapModal() {
+  if (!currentServiceId) return
+  const modal = document.getElementById('sitemap-modal')!
+  const content = document.getElementById('sitemap-modal-content')!
+  const collectBtn = document.getElementById('sitemap-modal-collect') as HTMLButtonElement
+  const analyseCheckbox = document.getElementById('sitemap-modal-analyse') as HTMLInputElement
+
+  if (sitemapPages.length === 0) {
+    content.innerHTML = '<p class="text-muted">No sitemap pages are available for this service.</p>'
+    collectBtn.disabled = true
+  } else {
+    collectBtn.disabled = false
+    content.innerHTML = `
+      <p style="margin-bottom:8px;color:var(--colour-text-muted);">
+        Select sitemap pages to collect for local storage${analyseCheckbox.checked ? ' and analysis' : ''}.
+      </p>
+      <div class="sitemap-page-list">
+        ${sitemapPages.map((page) => `
+          <label class="sitemap-page-row">
+            <input type="checkbox" data-sitemap-url="${escapeHtml(page.url)}" ${page.selected ? 'checked' : ''} />
+            <div style="display:grid;gap:4px;">
+              <div style="word-break:break-all;">${escapeHtml(page.url)}</div>
+              <div style="font-size:12px;color:var(--colour-text-muted);">
+                Collected: ${page.collected ? 'Yes' : 'No'} · Analysed: ${page.analysed ? 'Yes' : 'No'}
+              </div>
+              ${page.last_error ? `<div style="font-size:12px;color:var(--colour-danger);">${escapeHtml(page.last_error)}</div>` : ''}
+            </div>
+          </label>
+        `).join('')}
+      </div>
+    `
+  }
+
+  collectBtn.onclick = async () => {
+    if (!currentServiceId) return
+    const checked = [...content.querySelectorAll<HTMLInputElement>('input[type=\"checkbox\"][data-sitemap-url]:checked')]
+      .map((el) => el.dataset.sitemapUrl || '')
+      .filter(Boolean)
+
+    if (checked.length === 0) {
+      alert('Select at least one sitemap page.')
+      return
+    }
+
+    collectBtn.disabled = true
+    collectBtn.textContent = 'Collecting...'
+    try {
+      await api.services.collectSitemapPages(currentServiceId, {
+        urls: checked,
+        analyse: analyseCheckbox.checked,
+      })
+      await renderDetail(currentServiceId)
+      closeSitemapModal()
+    } catch (err) {
+      alert('Failed to collect selected sitemap pages.')
+    } finally {
+      collectBtn.disabled = false
+      collectBtn.textContent = 'Collect Selected'
+    }
+  }
+
+  modal.classList.remove('modal--hidden')
+}
+
+function closeSitemapModal() {
+  const modal = document.getElementById('sitemap-modal')!
+  modal.classList.add('modal--hidden')
+}
+
+document.getElementById('sitemap-modal-close')?.addEventListener('click', closeSitemapModal)
+document.getElementById('sitemap-modal-backdrop')?.addEventListener('click', closeSitemapModal)
 
 function renderChecklist(items: ChecklistItem[]): string {
   if (items.length === 0) return '<p class="text-muted">No checklist available yet.</p>'

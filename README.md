@@ -154,6 +154,15 @@ Behavior:
 - `GET /api/services/:id/checklist` — required/found/missing checklist items
 - `GET /api/services/:id/discovery-runs/latest` — latest async discovery run status
 - `POST /api/services/:id/discover` — manually queue discovery
+- `GET /api/services/:id/sitemap` — latest stored sitemap snapshot + page list
+- `POST /api/services/:id/sitemap/collect` — collect selected sitemap pages for storage and optional analysis
+
+## Sitemap workflow (UI)
+
+- If discovery finds a sitemap, the XML snapshot is copied locally and surfaced in service details.
+- Service details include an **Open Sitemap Selector** modal.
+- The modal renders sitemap page URLs with checkboxes.
+- Selected URLs can be collected for local storage, with optional analysis.
 
 Response shape:
 

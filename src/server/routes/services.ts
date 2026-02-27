@@ -13,6 +13,7 @@ import {
 } from '../db/queries.js'
 import { fetchAndStorePolicyDocument, CrawlerError } from '../services/crawler.js'
 import { enqueueDiscovery } from '../services/legal-discovery.js'
+import { collectSelectedSitemapPages, getLatestSitemapWithPages } from '../services/sitemap-collector.js'
 
 export const servicesRouter = Router()
 
@@ -168,6 +169,58 @@ servicesRouter.get('/:id/discovery-runs/latest', (req, res) => {
     ...run,
     stats_json: run.stats_json ? safeJsonParse(run.stats_json) : null,
   })
+})
+
+// GET /api/services/:id/sitemap — latest sitemap snapshot + page list
+servicesRouter.get('/:id/sitemap', async (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+
+  const data = await getLatestSitemapWithPages(service.id)
+  if (!data.sitemap) {
+    res.status(404).json({ error: 'No sitemap found for this service' })
+    return
+  }
+
+  res.json({
+    sitemap: data.sitemap,
+    pages: data.pages.map((p) => ({
+      ...p,
+      selected: Boolean(p.selected),
+      collected: Boolean(p.collected),
+      analysed: Boolean(p.analysed),
+    })),
+  })
+})
+
+// POST /api/services/:id/sitemap/collect — collect selected sitemap pages
+servicesRouter.post('/:id/sitemap/collect', async (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+
+  const { urls, analyse } = req.body as { urls?: string[]; analyse?: boolean }
+  if (!Array.isArray(urls) || urls.length === 0) {
+    res.status(400).json({ error: 'urls array is required' })
+    return
+  }
+
+  try {
+    const result = await collectSelectedSitemapPages({
+      serviceId: service.id,
+      urls,
+      analyse: analyse ?? true,
+    })
+    res.status(201).json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: message })
+  }
 })
 
 function safeJsonParse(value: string): unknown {
