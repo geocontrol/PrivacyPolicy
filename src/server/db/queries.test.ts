@@ -18,6 +18,15 @@ import {
   getThirdPartyById,
   insertSupplyChainEdge,
   getEdgesForService,
+  insertOrUpdateLegalDocument,
+  getLegalDocumentsForService,
+  upsertLegalChecklistItem,
+  getLegalChecklistForService,
+  upsertServiceResourceHub,
+  getResourceHubsForService,
+  createDiscoveryRun,
+  updateDiscoveryRunStatus,
+  getLatestDiscoveryRunForService,
 } from './queries.js'
 import { makePolicyAnalysisResult } from '../../../tests/fixtures/index.js'
 
@@ -37,6 +46,10 @@ afterAll(() => {
 afterEach(() => {
   // Wipe all rows between tests — faster than recreating schema
   testDb.exec(`
+    DELETE FROM legal_checklist_items;
+    DELETE FROM service_resource_hubs;
+    DELETE FROM service_discovery_runs;
+    DELETE FROM legal_documents;
     DELETE FROM supply_chain_edges;
     DELETE FROM policy_analyses;
     DELETE FROM policy_documents;
@@ -352,5 +365,109 @@ describe('getEdgesForService', () => {
     insertSupplyChainEdge(svc2.id, tp.id, doc2.id)
     expect(getEdgesForService(svc1.id)).toHaveLength(1)
     expect(getEdgesForService(svc2.id)).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legal discovery artifacts
+// ---------------------------------------------------------------------------
+
+describe('legal documents/checklists/resource hubs/discovery runs', () => {
+  it('upserts legal documents by service/doc_type/resolved_url', () => {
+    const svc = insertService('Legal', 'https://legal.com')
+    const first = insertOrUpdateLegalDocument({
+      serviceId: svc.id,
+      docType: 'privacy_policy',
+      sourceUrl: svc.url,
+      resolvedUrl: 'https://legal.com/privacy',
+      filePath: '/tmp/legal-1.html',
+      contentHash: 'hash-1',
+      discoveryMethod: 'links',
+    })
+
+    const second = insertOrUpdateLegalDocument({
+      serviceId: svc.id,
+      docType: 'privacy_policy',
+      sourceUrl: svc.url,
+      resolvedUrl: 'https://legal.com/privacy',
+      filePath: '/tmp/legal-2.html',
+      contentHash: 'hash-2',
+      discoveryMethod: 'sitemap',
+    })
+
+    expect(first.id).toBe(second.id)
+    const docs = getLegalDocumentsForService(svc.id)
+    expect(docs).toHaveLength(1)
+    expect(docs[0].discovery_method).toBe('sitemap')
+  })
+
+  it('upserts checklist items and links to a document', () => {
+    const svc = insertService('Checklist', 'https://checklist.com')
+    const doc = insertOrUpdateLegalDocument({
+      serviceId: svc.id,
+      docType: 'terms_of_use',
+      sourceUrl: svc.url,
+      resolvedUrl: 'https://checklist.com/terms',
+      filePath: '/tmp/terms.html',
+      contentHash: 'terms-hash',
+      discoveryMethod: 'paths',
+    })
+
+    upsertLegalChecklistItem({
+      serviceId: svc.id,
+      docType: 'terms_of_use',
+      required: true,
+      found: false,
+      notes: 'initial',
+    })
+    upsertLegalChecklistItem({
+      serviceId: svc.id,
+      docType: 'terms_of_use',
+      required: true,
+      found: true,
+      documentId: doc.id,
+      notes: 'found',
+    })
+
+    const checklist = getLegalChecklistForService(svc.id)
+    expect(checklist).toHaveLength(1)
+    expect(checklist[0].found).toBe(1)
+    expect(checklist[0].document_id).toBe(doc.id)
+  })
+
+  it('upserts resource hubs by service/hub/url', () => {
+    const svc = insertService('Hub', 'https://hub.com')
+    upsertServiceResourceHub({
+      serviceId: svc.id,
+      hubType: 'privacy_center',
+      url: 'https://hub.com/privacy-center',
+      title: 'Privacy Center',
+      confidence: 0.9,
+    })
+    upsertServiceResourceHub({
+      serviceId: svc.id,
+      hubType: 'privacy_center',
+      url: 'https://hub.com/privacy-center',
+      title: 'Privacy & Choices',
+      confidence: 0.95,
+    })
+
+    const hubs = getResourceHubsForService(svc.id)
+    expect(hubs).toHaveLength(1)
+    expect(hubs[0].title).toBe('Privacy & Choices')
+  })
+
+  it('tracks latest discovery run status transitions', () => {
+    const svc = insertService('Discovery', 'https://discovery.com')
+    const run = createDiscoveryRun(svc.id, 'queued')
+    updateDiscoveryRunStatus(run.id, 'running')
+    updateDiscoveryRunStatus(run.id, 'partial', {
+      statsJson: { found: 2, missingRequired: ['security_policy'] },
+    })
+
+    const latest = getLatestDiscoveryRunForService(svc.id)
+    expect(latest?.status).toBe('partial')
+    expect(latest?.stats_json).toContain('missingRequired')
+    expect(latest?.finished_at).toBeTruthy()
   })
 })

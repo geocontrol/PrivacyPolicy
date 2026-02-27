@@ -5,6 +5,7 @@ import {
 } from '../db/queries.js'
 import { fetchAndStorePolicyDocument, CrawlerError } from '../services/crawler.js'
 import { analyseDocument, AnalyserError } from '../services/analyser.js'
+import { enqueueDiscovery } from '../services/legal-discovery.js'
 
 export const extensionRouter = Router()
 
@@ -41,6 +42,8 @@ extensionRouter.post('/signup', async (req, res) => {
   if (!service) {
     service = insertService(name?.trim() || normalizedDomain, normalizedDomain, category)
   }
+
+  enqueueDiscovery(service.id)
 
   try {
     const fetchResult = await fetchAndStorePolicyDocument(service.id, service.url)

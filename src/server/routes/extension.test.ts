@@ -48,6 +48,10 @@ vi.mock('../services/analyser.js', () => {
   }
 })
 
+vi.mock('../services/legal-discovery.js', () => ({
+  enqueueDiscovery: vi.fn(),
+}))
+
 const mockedFindServiceByNormalizedDomain =
   findServiceByNormalizedDomain as MockedFunction<typeof findServiceByNormalizedDomain>
 const mockedInsertService = insertService as MockedFunction<typeof insertService>

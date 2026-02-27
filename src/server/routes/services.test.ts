@@ -9,6 +9,10 @@ import {
   deleteService,
   getDocumentsForService,
   getLatestDocumentForService,
+  getLegalDocumentsForService,
+  getLegalChecklistForService,
+  getLatestDiscoveryRunForService,
+  getResourceHubsForService,
 } from '../db/queries.js'
 import { fetchAndStorePolicyDocument } from '../services/crawler.js'
 import { servicesRouter } from './services.js'
@@ -25,6 +29,15 @@ vi.mock('../db/queries.js', () => ({
   deleteService: vi.fn(),
   getDocumentsForService: vi.fn(),
   getLatestDocumentForService: vi.fn(),
+  getLegalDocumentsForService: vi.fn(),
+  getLegalChecklistForService: vi.fn(),
+  getLatestDiscoveryRunForService: vi.fn(),
+  getResourceHubsForService: vi.fn(),
+  createDiscoveryRun: vi.fn(),
+  updateDiscoveryRunStatus: vi.fn(),
+  insertOrUpdateLegalDocument: vi.fn(),
+  upsertLegalChecklistItem: vi.fn(),
+  upsertServiceResourceHub: vi.fn(),
 }))
 
 // Re-create CrawlerError in the mock so instanceof checks in the route work
@@ -43,12 +56,20 @@ vi.mock('../services/crawler.js', () => {
   }
 })
 
+vi.mock('../services/legal-discovery.js', () => ({
+  enqueueDiscovery: vi.fn(),
+}))
+
 const mockedGetAllServices = getAllServices as MockedFunction<typeof getAllServices>
 const mockedGetServiceById = getServiceById as MockedFunction<typeof getServiceById>
 const mockedInsertService = insertService as MockedFunction<typeof insertService>
 const mockedDeleteService = deleteService as MockedFunction<typeof deleteService>
 const mockedGetDocumentsForService = getDocumentsForService as MockedFunction<typeof getDocumentsForService>
 const mockedGetLatestDocumentForService = getLatestDocumentForService as MockedFunction<typeof getLatestDocumentForService>
+const mockedGetLegalDocumentsForService = getLegalDocumentsForService as MockedFunction<typeof getLegalDocumentsForService>
+const mockedGetLegalChecklistForService = getLegalChecklistForService as MockedFunction<typeof getLegalChecklistForService>
+const mockedGetLatestDiscoveryRunForService = getLatestDiscoveryRunForService as MockedFunction<typeof getLatestDiscoveryRunForService>
+const mockedGetResourceHubsForService = getResourceHubsForService as MockedFunction<typeof getResourceHubsForService>
 const mockedFetchAndStore = fetchAndStorePolicyDocument as MockedFunction<typeof fetchAndStorePolicyDocument>
 
 // ---------------------------------------------------------------------------
@@ -284,5 +305,120 @@ describe('POST /:id/fetch', () => {
     mockedFetchAndStore.mockRejectedValue(new Error('Unexpected crash'))
     const res = await supertest(app).post('/svc-test-id-001/fetch')
     expect(res.status).toBe(500)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/discover
+// ---------------------------------------------------------------------------
+
+describe('POST /:id/discover', () => {
+  it('returns 202 when service exists', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    const res = await supertest(app).post('/svc-test-id-001/discover')
+    expect(res.status).toBe(202)
+    expect(res.body.message).toContain('queued')
+  })
+
+  it('returns 404 when service does not exist', async () => {
+    mockedGetServiceById.mockReturnValue(undefined)
+    const res = await supertest(app).post('/missing/discover')
+    expect(res.status).toBe(404)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /:id/legal-documents
+// ---------------------------------------------------------------------------
+
+describe('GET /:id/legal-documents', () => {
+  it('returns legal documents and resource hubs', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLegalDocumentsForService.mockReturnValue([{
+      id: 'ld-1',
+      service_id: 'svc-test-id-001',
+      doc_type: 'privacy_policy',
+      title: 'Privacy Policy',
+      source_url: 'https://example.com',
+      resolved_url: 'https://example.com/privacy',
+      file_path: '/tmp/privacy.html',
+      content_hash: 'hash',
+      retrieved_at: '2024-01-01 00:00:00',
+      status: 'retrieved',
+      discovery_method: 'links',
+      is_regulation_specific: 0,
+      regulation_tag: null,
+    }])
+    mockedGetResourceHubsForService.mockReturnValue([{
+      id: 'hub-1',
+      service_id: 'svc-test-id-001',
+      hub_type: 'privacy_center',
+      url: 'https://example.com/privacy-center',
+      title: 'Privacy Center',
+      confidence: 0.8,
+      notes: null,
+      detected_at: '2024-01-01 00:00:00',
+    }])
+
+    const res = await supertest(app).get('/svc-test-id-001/legal-documents')
+    expect(res.status).toBe(200)
+    expect(res.body.legalDocuments).toHaveLength(1)
+    expect(res.body.resourceHubs).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /:id/checklist
+// ---------------------------------------------------------------------------
+
+describe('GET /:id/checklist', () => {
+  it('returns checklist with boolean fields', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLegalChecklistForService.mockReturnValue([{
+      id: 'chk-1',
+      service_id: 'svc-test-id-001',
+      doc_type: 'privacy_policy',
+      required: 1,
+      found: 0,
+      document_id: null,
+      notes: 'not found yet',
+      updated_at: '2024-01-01 00:00:00',
+    }])
+
+    const res = await supertest(app).get('/svc-test-id-001/checklist')
+    expect(res.status).toBe(200)
+    expect(res.body[0].required).toBe(true)
+    expect(res.body[0].found).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /:id/discovery-runs/latest
+// ---------------------------------------------------------------------------
+
+describe('GET /:id/discovery-runs/latest', () => {
+  it('returns 404 when no run exists', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLatestDiscoveryRunForService.mockReturnValue(undefined)
+    const res = await supertest(app).get('/svc-test-id-001/discovery-runs/latest')
+    expect(res.status).toBe(404)
+  })
+
+  it('returns latest run when present', async () => {
+    mockedGetServiceById.mockReturnValue(makeService())
+    mockedGetLatestDiscoveryRunForService.mockReturnValue({
+      id: 'run-1',
+      service_id: 'svc-test-id-001',
+      status: 'partial',
+      started_at: '2024-01-01 00:00:00',
+      finished_at: '2024-01-01 00:05:00',
+      error: null,
+      stats_json: '{"found":2}',
+    })
+
+    const res = await supertest(app).get('/svc-test-id-001/discovery-runs/latest')
+    expect(res.status).toBe(200)
+    expect(res.body.id).toBe('run-1')
+    expect(res.body.stats_json.found).toBe(2)
   })
 })

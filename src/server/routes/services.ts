@@ -6,8 +6,13 @@ import {
   deleteService,
   getDocumentsForService,
   getLatestDocumentForService,
+  getLegalDocumentsForService,
+  getLegalChecklistForService,
+  getLatestDiscoveryRunForService,
+  getResourceHubsForService,
 } from '../db/queries.js'
 import { fetchAndStorePolicyDocument, CrawlerError } from '../services/crawler.js'
+import { enqueueDiscovery } from '../services/legal-discovery.js'
 
 export const servicesRouter = Router()
 
@@ -49,6 +54,7 @@ servicesRouter.post('/', (req, res) => {
   }
 
   const service = insertService(name, url, category)
+  enqueueDiscovery(service.id)
   res.status(201).json(service)
 })
 
@@ -99,3 +105,75 @@ servicesRouter.post('/:id/fetch', async (req, res) => {
     res.status(500).json({ error: 'An unexpected error occurred during policy retrieval' })
   }
 })
+
+// POST /api/services/:id/discover — queue legal-document discovery run
+servicesRouter.post('/:id/discover', (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+  enqueueDiscovery(service.id)
+  res.status(202).json({ message: 'Legal discovery queued' })
+})
+
+// GET /api/services/:id/legal-documents — list all discovered legal docs for a service
+servicesRouter.get('/:id/legal-documents', (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+
+  const legalDocuments = getLegalDocumentsForService(service.id)
+  const resourceHubs = getResourceHubsForService(service.id).map((hub) => ({
+    ...hub,
+    confidence: Number(hub.confidence),
+  }))
+
+  res.json({ legalDocuments, resourceHubs })
+})
+
+// GET /api/services/:id/checklist — document checklist state for a service
+servicesRouter.get('/:id/checklist', (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+
+  const checklist = getLegalChecklistForService(service.id).map((item) => ({
+    ...item,
+    required: Boolean(item.required),
+    found: Boolean(item.found),
+  }))
+  res.json(checklist)
+})
+
+// GET /api/services/:id/discovery-runs/latest — latest async discovery run status
+servicesRouter.get('/:id/discovery-runs/latest', (req, res) => {
+  const service = getServiceById(req.params.id)
+  if (!service) {
+    res.status(404).json({ error: 'Service not found' })
+    return
+  }
+
+  const run = getLatestDiscoveryRunForService(service.id)
+  if (!run) {
+    res.status(404).json({ error: 'No discovery run found for this service' })
+    return
+  }
+
+  res.json({
+    ...run,
+    stats_json: run.stats_json ? safeJsonParse(run.stats_json) : null,
+  })
+})
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}

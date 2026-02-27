@@ -1,4 +1,4 @@
-import { api, PolicyAnalysis } from '../api.ts'
+import { api, ChecklistItem, LegalDocument, ResourceHub, DiscoveryRun } from '../api.ts'
 
 let currentServiceId: string | null = null
 
@@ -47,6 +47,12 @@ function formatDate(dateStr: string): string {
   })
 }
 
+function humaniseDocType(docType: string): string {
+  return docType
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 // Render tag chips
 function renderTags(items: string[] | null): string {
   if (!items || items.length === 0) {
@@ -71,6 +77,32 @@ async function renderDetail(serviceId: string) {
     `
 
     let documentHistoryHtml = ''
+    let checklistHtml = '<p class="text-muted">No checklist available yet.</p>'
+    let legalDocsHtml = '<p class="text-muted">No legal documents discovered yet.</p>'
+    let resourceHubsHtml = '<p class="text-muted">No resource hubs detected yet.</p>'
+    let discoveryRunHtml = '<p class="text-muted">No discovery run has been started yet.</p>'
+
+    try {
+      const checklist = await api.services.checklist(serviceId)
+      checklistHtml = renderChecklist(checklist)
+    } catch {
+      // Discovery may not have run yet.
+    }
+
+    try {
+      const legalData = await api.services.legalDocuments(serviceId)
+      legalDocsHtml = renderLegalDocuments(legalData.legalDocuments)
+      resourceHubsHtml = renderResourceHubs(legalData.resourceHubs)
+    } catch {
+      // Discovery may not have run yet.
+    }
+
+    try {
+      const run = await api.services.latestDiscoveryRun(serviceId)
+      discoveryRunHtml = renderDiscoveryRun(run)
+    } catch {
+      // No run yet.
+    }
 
     if (service.latestDocument) {
       const docs = await api.services.documents(serviceId)
@@ -142,6 +174,26 @@ async function renderDetail(serviceId: string) {
 
       <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
 
+      <h4>Legal Discovery Run</h4>
+      ${discoveryRunHtml}
+
+      <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
+
+      <h4>Legal Documents Checklist</h4>
+      ${checklistHtml}
+
+      <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
+
+      <h4>Discovered Legal Documents</h4>
+      ${legalDocsHtml}
+
+      <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
+
+      <h4>Privacy Centre / Settings Hubs</h4>
+      ${resourceHubsHtml}
+
+      <hr style="margin: var(--spacing) 0; border: none; border-top: 1px solid var(--colour-border);" />
+
       ${documentHistoryHtml}
     `
   } catch (err) {
@@ -150,6 +202,80 @@ async function renderDetail(serviceId: string) {
       <p class="text-muted">Unable to load service details. Please try again.</p>
     `
   }
+}
+
+function renderChecklist(items: ChecklistItem[]): string {
+  if (items.length === 0) return '<p class="text-muted">No checklist available yet.</p>'
+
+  return `
+    <div>
+      ${items.map((item) => `
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--colour-border);">
+          <div style="font-weight: 600;">${escapeHtml(humaniseDocType(item.doc_type))}</div>
+          <div style="font-size: 12px; color: var(--colour-text-muted);">
+            Required: ${item.required ? 'Yes' : 'No'} · Found: ${item.found ? 'Yes' : 'No'}
+          </div>
+          ${item.notes ? `<div style="font-size: 12px;">${escapeHtml(item.notes)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderLegalDocuments(documents: LegalDocument[]): string {
+  if (documents.length === 0) return '<p class="text-muted">No legal documents discovered yet.</p>'
+
+  return `
+    <div>
+      ${documents.map((doc) => `
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--colour-border);">
+          <div style="font-weight: 600;">${escapeHtml(humaniseDocType(doc.doc_type))}</div>
+          ${doc.title ? `<div style="font-size: 13px;">${escapeHtml(doc.title)}</div>` : ''}
+          <div style="font-size: 12px; color: var(--colour-text-muted);">
+            Found via ${escapeHtml(doc.discovery_method)} · ${escapeHtml(formatDate(doc.retrieved_at))}
+          </div>
+          <a href="${escapeHtml(doc.resolved_url)}" target="_blank" rel="noopener noreferrer" style="word-break: break-all;">
+            ${escapeHtml(doc.resolved_url)}
+          </a>
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderResourceHubs(hubs: ResourceHub[]): string {
+  if (hubs.length === 0) return '<p class="text-muted">No resource hubs detected yet.</p>'
+
+  return `
+    <div>
+      ${hubs.map((hub) => `
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--colour-border);">
+          <div style="font-weight: 600;">${escapeHtml(humaniseDocType(hub.hub_type))}</div>
+          ${hub.title ? `<div style="font-size: 13px;">${escapeHtml(hub.title)}</div>` : ''}
+          <div style="font-size: 12px; color: var(--colour-text-muted);">
+            Confidence: ${Math.round(hub.confidence * 100)}%
+          </div>
+          <a href="${escapeHtml(hub.url)}" target="_blank" rel="noopener noreferrer" style="word-break: break-all;">
+            ${escapeHtml(hub.url)}
+          </a>
+          ${hub.notes ? `<div style="font-size: 12px;">${escapeHtml(hub.notes)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderDiscoveryRun(run: DiscoveryRun): string {
+  const stats = run.stats_json ? JSON.stringify(run.stats_json) : null
+  return `
+    <div style="background-color: var(--colour-surface); padding: var(--spacing); border-radius: var(--radius); border: 1px solid var(--colour-border);">
+      <div><strong>Status:</strong> ${escapeHtml(run.status)}</div>
+      <div><strong>Started:</strong> ${escapeHtml(formatDate(run.started_at))}</div>
+      ${run.finished_at ? `<div><strong>Finished:</strong> ${escapeHtml(formatDate(run.finished_at))}</div>` : ''}
+      ${run.error ? `<div><strong>Error:</strong> ${escapeHtml(run.error)}</div>` : ''}
+      ${stats ? `<div style="font-size: 12px; margin-top: 6px;"><strong>Stats:</strong> ${escapeHtml(stats)}</div>` : ''}
+    </div>
+  `
 }
 
 function renderContactCard(contact: Record<string, string> | null): string {

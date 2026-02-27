@@ -97,6 +97,57 @@ function initialise(db: Database.Database): void {
       UNIQUE(from_service_id, to_third_party_id, document_id)
     );
 
+    CREATE TABLE IF NOT EXISTS legal_documents (
+      id                      TEXT PRIMARY KEY,
+      service_id              TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      doc_type                TEXT NOT NULL,
+      title                   TEXT,
+      source_url              TEXT NOT NULL,
+      resolved_url            TEXT NOT NULL,
+      file_path               TEXT NOT NULL,
+      content_hash            TEXT NOT NULL,
+      retrieved_at            TEXT NOT NULL DEFAULT (datetime('now')),
+      status                  TEXT NOT NULL DEFAULT 'retrieved',
+      discovery_method        TEXT NOT NULL,
+      is_regulation_specific  INTEGER NOT NULL DEFAULT 0,
+      regulation_tag          TEXT,
+      UNIQUE(service_id, doc_type, resolved_url)
+    );
+
+    CREATE TABLE IF NOT EXISTS legal_checklist_items (
+      id          TEXT PRIMARY KEY,
+      service_id  TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      doc_type    TEXT NOT NULL,
+      required    INTEGER NOT NULL DEFAULT 1,
+      found       INTEGER NOT NULL DEFAULT 0,
+      document_id TEXT REFERENCES legal_documents(id) ON DELETE SET NULL,
+      notes       TEXT,
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(service_id, doc_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS service_resource_hubs (
+      id          TEXT PRIMARY KEY,
+      service_id  TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      hub_type    TEXT NOT NULL,
+      url         TEXT NOT NULL,
+      title       TEXT,
+      confidence  REAL NOT NULL DEFAULT 0.5,
+      notes       TEXT,
+      detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(service_id, hub_type, url)
+    );
+
+    CREATE TABLE IF NOT EXISTS service_discovery_runs (
+      id          TEXT PRIMARY KEY,
+      service_id  TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      status      TEXT NOT NULL,
+      started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      error       TEXT,
+      stats_json  TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_policy_documents_service_id
       ON policy_documents(service_id);
 
@@ -108,5 +159,17 @@ function initialise(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_supply_chain_edges_to
       ON supply_chain_edges(to_third_party_id);
+
+    CREATE INDEX IF NOT EXISTS idx_legal_documents_service_doc_type
+      ON legal_documents(service_id, doc_type);
+
+    CREATE INDEX IF NOT EXISTS idx_legal_documents_service_content_hash
+      ON legal_documents(service_id, content_hash);
+
+    CREATE INDEX IF NOT EXISTS idx_legal_checklist_items_service_doc_type
+      ON legal_checklist_items(service_id, doc_type);
+
+    CREATE INDEX IF NOT EXISTS idx_service_discovery_runs_service_started
+      ON service_discovery_runs(service_id, started_at DESC);
   `)
 }

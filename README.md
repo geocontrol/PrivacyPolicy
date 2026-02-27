@@ -5,6 +5,7 @@ A local-first personal intelligence dashboard that aggregates, analyses, and vis
 ## What it does
 
 - Add any online service by name and URL
+- Automatically runs asynchronous legal-document discovery on add (privacy/terms/security/data + regulated docs when applicable)
 - Automatically fetches and stores the privacy policy document (with timestamps)
 - Uses an LLM to analyse and summarise the policy in plain language
 - Identifies third parties mentioned in each policy and builds a supply chain graph
@@ -112,6 +113,14 @@ Compose mounts `./data` into `/app/data` in the container. This keeps:
 
 Set `EXTENSION_API_TOKEN` in your `.env` file. Browser extension requests must send the same value in the `x-extension-token` header.
 
+## Chrome extension
+
+A standalone Chrome extension is available in:
+
+- `extensions/privacy-dashboard-chrome`
+
+It provides a popup button to add the currently browsed site to this dashboard via the extension signup API. See its dedicated README for setup and usage.
+
 Endpoint:
 
 - `POST /api/integrations/extension/signup`
@@ -134,9 +143,17 @@ Request body:
 Behavior:
 
 - Upserts a service by normalized domain
+- Queues legal discovery for checklist/resource-hub detection
 - Fetches the latest privacy policy document
 - Runs policy analysis
 - Returns `201` when a new service is created, `200` when an existing service is reused
+
+## Legal discovery endpoints
+
+- `GET /api/services/:id/legal-documents` — discovered legal documents + resource hubs
+- `GET /api/services/:id/checklist` — required/found/missing checklist items
+- `GET /api/services/:id/discovery-runs/latest` — latest async discovery run status
+- `POST /api/services/:id/discover` — manually queue discovery
 
 Response shape:
 
@@ -167,3 +184,4 @@ Response shape:
 
 - [`docs/ideation-brief.md`](docs/ideation-brief.md) — project vision and requirements
 - [`docs/adr-001-technology-stack.md`](docs/adr-001-technology-stack.md) — technology decisions and rationale
+- [`docs/legal-discovery-pipeline.md`](docs/legal-discovery-pipeline.md) — multi-document discovery design

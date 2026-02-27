@@ -61,6 +61,54 @@ export interface ServiceWithDoc extends Service {
   latestDocument: PolicyDocument | null
 }
 
+export interface LegalDocument {
+  id: string
+  service_id: string
+  doc_type: string
+  title: string | null
+  source_url: string
+  resolved_url: string
+  file_path: string
+  content_hash: string
+  retrieved_at: string
+  status: string
+  discovery_method: string
+  is_regulation_specific: number
+  regulation_tag: string | null
+}
+
+export interface ResourceHub {
+  id: string
+  service_id: string
+  hub_type: string
+  url: string
+  title: string | null
+  confidence: number
+  notes: string | null
+  detected_at: string
+}
+
+export interface ChecklistItem {
+  id: string
+  service_id: string
+  doc_type: string
+  required: boolean
+  found: boolean
+  document_id: string | null
+  notes: string | null
+  updated_at: string
+}
+
+export interface DiscoveryRun {
+  id: string
+  service_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'partial'
+  started_at: string
+  finished_at: string | null
+  error: string | null
+  stats_json: Record<string, unknown> | null
+}
+
 // API Error type
 export class ApiError extends Error {
   constructor(
@@ -112,6 +160,22 @@ export const api = {
       ),
 
     documents: (id: string) => apiFetch<PolicyDocument[]>(`/api/services/${id}/documents`),
+
+    legalDocuments: (id: string) =>
+      apiFetch<{ legalDocuments: LegalDocument[]; resourceHubs: ResourceHub[] }>(
+        `/api/services/${id}/legal-documents`,
+      ),
+
+    checklist: (id: string) =>
+      apiFetch<ChecklistItem[]>(`/api/services/${id}/checklist`),
+
+    latestDiscoveryRun: (id: string) =>
+      apiFetch<DiscoveryRun>(`/api/services/${id}/discovery-runs/latest`),
+
+    discover: (id: string) =>
+      apiFetch<{ message: string }>(`/api/services/${id}/discover`, {
+        method: 'POST',
+      }),
   },
 
   analyses: {

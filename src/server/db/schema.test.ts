@@ -76,6 +76,45 @@ describe('table creation', () => {
     expect(names).toContain('context_snippet')
   })
 
+  it('creates the legal_documents table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('legal_documents')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('doc_type')
+    expect(names).toContain('resolved_url')
+    expect(names).toContain('discovery_method')
+    expect(names).toContain('is_regulation_specific')
+  })
+
+  it('creates the legal_checklist_items table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('legal_checklist_items')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('doc_type')
+    expect(names).toContain('required')
+    expect(names).toContain('found')
+    expect(names).toContain('document_id')
+  })
+
+  it('creates the service_resource_hubs table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('service_resource_hubs')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('hub_type')
+    expect(names).toContain('url')
+    expect(names).toContain('confidence')
+  })
+
+  it('creates the service_discovery_runs table with correct columns', () => {
+    getDb()
+    const cols = testDb.prepare("PRAGMA table_info('service_discovery_runs')").all() as Array<{ name: string }>
+    const names = cols.map(c => c.name)
+    expect(names).toContain('status')
+    expect(names).toContain('started_at')
+    expect(names).toContain('finished_at')
+    expect(names).toContain('stats_json')
+  })
+
   it('is idempotent — calling getDb() twice does not throw', () => {
     expect(() => { getDb(); getDb() }).not.toThrow()
   })
@@ -103,6 +142,15 @@ describe('indexes', () => {
     const indexes = testDb.prepare("PRAGMA index_list('supply_chain_edges')").all() as Array<{ name: string }>
     const names = indexes.map(i => i.name)
     expect(names.some(n => n.includes('from'))).toBe(true)
+  })
+
+  it('creates legal discovery indexes', () => {
+    getDb()
+    const docIdx = testDb.prepare("PRAGMA index_list('legal_documents')").all() as Array<{ name: string }>
+    const runIdx = testDb.prepare("PRAGMA index_list('service_discovery_runs')").all() as Array<{ name: string }>
+    expect(docIdx.some(i => i.name === 'idx_legal_documents_service_doc_type')).toBe(true)
+    expect(docIdx.some(i => i.name === 'idx_legal_documents_service_content_hash')).toBe(true)
+    expect(runIdx.some(i => i.name === 'idx_service_discovery_runs_service_started')).toBe(true)
   })
 })
 

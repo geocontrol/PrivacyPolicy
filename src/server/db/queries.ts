@@ -25,6 +25,54 @@ export interface PolicyDocument {
   status: string
 }
 
+export interface LegalDocument {
+  id: string
+  service_id: string
+  doc_type: string
+  title: string | null
+  source_url: string
+  resolved_url: string
+  file_path: string
+  content_hash: string
+  retrieved_at: string
+  status: string
+  discovery_method: string
+  is_regulation_specific: number
+  regulation_tag: string | null
+}
+
+export interface LegalChecklistItem {
+  id: string
+  service_id: string
+  doc_type: string
+  required: number
+  found: number
+  document_id: string | null
+  notes: string | null
+  updated_at: string
+}
+
+export interface ServiceResourceHub {
+  id: string
+  service_id: string
+  hub_type: string
+  url: string
+  title: string | null
+  confidence: number
+  notes: string | null
+  detected_at: string
+}
+
+export interface ServiceDiscoveryRun {
+  id: string
+  service_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'partial'
+  started_at: string
+  finished_at: string | null
+  error: string | null
+  stats_json: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Services
 // ---------------------------------------------------------------------------
@@ -124,6 +172,262 @@ export function getDocumentsForService(serviceId: string): PolicyDocument[] {
       ORDER BY retrieved_at DESC
     `)
     .all(serviceId) as PolicyDocument[]
+}
+
+// ---------------------------------------------------------------------------
+// Legal discovery documents/checklists/resource hubs/runs
+// ---------------------------------------------------------------------------
+
+export function insertOrUpdateLegalDocument(input: {
+  serviceId: string
+  docType: string
+  title?: string
+  sourceUrl: string
+  resolvedUrl: string
+  filePath: string
+  contentHash: string
+  status?: string
+  discoveryMethod: string
+  isRegulationSpecific?: boolean
+  regulationTag?: string
+}): LegalDocument {
+  const db = getDb()
+
+  const existing = db.prepare(`
+    SELECT * FROM legal_documents
+    WHERE service_id = ? AND doc_type = ? AND resolved_url = ?
+  `).get(input.serviceId, input.docType, input.resolvedUrl) as LegalDocument | undefined
+
+  if (existing) {
+    db.prepare(`
+      UPDATE legal_documents
+      SET title = ?, source_url = ?, file_path = ?, content_hash = ?, status = ?,
+          discovery_method = ?, is_regulation_specific = ?, regulation_tag = ?,
+          retrieved_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      input.title ?? null,
+      input.sourceUrl,
+      input.filePath,
+      input.contentHash,
+      input.status ?? 'retrieved',
+      input.discoveryMethod,
+      input.isRegulationSpecific ? 1 : 0,
+      input.regulationTag ?? null,
+      existing.id,
+    )
+    return getLegalDocumentById(existing.id)!
+  }
+
+  const id = randomUUID()
+  db.prepare(`
+    INSERT INTO legal_documents
+      (id, service_id, doc_type, title, source_url, resolved_url, file_path, content_hash,
+       status, discovery_method, is_regulation_specific, regulation_tag)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.serviceId,
+    input.docType,
+    input.title ?? null,
+    input.sourceUrl,
+    input.resolvedUrl,
+    input.filePath,
+    input.contentHash,
+    input.status ?? 'retrieved',
+    input.discoveryMethod,
+    input.isRegulationSpecific ? 1 : 0,
+    input.regulationTag ?? null,
+  )
+
+  return getLegalDocumentById(id)!
+}
+
+export function getLegalDocumentById(id: string): LegalDocument | undefined {
+  return getDb()
+    .prepare('SELECT * FROM legal_documents WHERE id = ?')
+    .get(id) as LegalDocument | undefined
+}
+
+export function getLegalDocumentsForService(serviceId: string): LegalDocument[] {
+  return getDb()
+    .prepare(`
+      SELECT * FROM legal_documents
+      WHERE service_id = ?
+      ORDER BY retrieved_at DESC
+    `)
+    .all(serviceId) as LegalDocument[]
+}
+
+export function upsertLegalChecklistItem(input: {
+  serviceId: string
+  docType: string
+  required: boolean
+  found: boolean
+  documentId?: string
+  notes?: string
+}): LegalChecklistItem {
+  const db = getDb()
+  const existing = db.prepare(`
+    SELECT * FROM legal_checklist_items
+    WHERE service_id = ? AND doc_type = ?
+  `).get(input.serviceId, input.docType) as LegalChecklistItem | undefined
+
+  if (existing) {
+    db.prepare(`
+      UPDATE legal_checklist_items
+      SET required = ?, found = ?, document_id = ?, notes = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      input.required ? 1 : 0,
+      input.found ? 1 : 0,
+      input.documentId ?? null,
+      input.notes ?? null,
+      existing.id,
+    )
+    return getLegalChecklistItemById(existing.id)!
+  }
+
+  const id = randomUUID()
+  db.prepare(`
+    INSERT INTO legal_checklist_items
+      (id, service_id, doc_type, required, found, document_id, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.serviceId,
+    input.docType,
+    input.required ? 1 : 0,
+    input.found ? 1 : 0,
+    input.documentId ?? null,
+    input.notes ?? null,
+  )
+  return getLegalChecklistItemById(id)!
+}
+
+export function getLegalChecklistForService(serviceId: string): LegalChecklistItem[] {
+  return getDb()
+    .prepare(`
+      SELECT * FROM legal_checklist_items
+      WHERE service_id = ?
+      ORDER BY doc_type ASC
+    `)
+    .all(serviceId) as LegalChecklistItem[]
+}
+
+function getLegalChecklistItemById(id: string): LegalChecklistItem | undefined {
+  return getDb()
+    .prepare('SELECT * FROM legal_checklist_items WHERE id = ?')
+    .get(id) as LegalChecklistItem | undefined
+}
+
+export function upsertServiceResourceHub(input: {
+  serviceId: string
+  hubType: string
+  url: string
+  title?: string
+  confidence?: number
+  notes?: string
+}): ServiceResourceHub {
+  const db = getDb()
+  const existing = db.prepare(`
+    SELECT * FROM service_resource_hubs
+    WHERE service_id = ? AND hub_type = ? AND url = ?
+  `).get(input.serviceId, input.hubType, input.url) as ServiceResourceHub | undefined
+
+  if (existing) {
+    db.prepare(`
+      UPDATE service_resource_hubs
+      SET title = ?, confidence = ?, notes = ?, detected_at = datetime('now')
+      WHERE id = ?
+    `).run(input.title ?? null, input.confidence ?? 0.5, input.notes ?? null, existing.id)
+    return getServiceResourceHubById(existing.id)!
+  }
+
+  const id = randomUUID()
+  db.prepare(`
+    INSERT INTO service_resource_hubs
+      (id, service_id, hub_type, url, title, confidence, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.serviceId,
+    input.hubType,
+    input.url,
+    input.title ?? null,
+    input.confidence ?? 0.5,
+    input.notes ?? null,
+  )
+  return getServiceResourceHubById(id)!
+}
+
+export function getResourceHubsForService(serviceId: string): ServiceResourceHub[] {
+  return getDb()
+    .prepare(`
+      SELECT * FROM service_resource_hubs
+      WHERE service_id = ?
+      ORDER BY detected_at DESC
+    `)
+    .all(serviceId) as ServiceResourceHub[]
+}
+
+function getServiceResourceHubById(id: string): ServiceResourceHub | undefined {
+  return getDb()
+    .prepare('SELECT * FROM service_resource_hubs WHERE id = ?')
+    .get(id) as ServiceResourceHub | undefined
+}
+
+export function createDiscoveryRun(
+  serviceId: string,
+  status: ServiceDiscoveryRun['status'] = 'queued',
+): ServiceDiscoveryRun {
+  const db = getDb()
+  const id = randomUUID()
+  db.prepare(`
+    INSERT INTO service_discovery_runs (id, service_id, status)
+    VALUES (?, ?, ?)
+  `).run(id, serviceId, status)
+  return getDiscoveryRunById(id)!
+}
+
+export function updateDiscoveryRunStatus(
+  runId: string,
+  status: ServiceDiscoveryRun['status'],
+  options?: { error?: string; statsJson?: unknown },
+): ServiceDiscoveryRun | undefined {
+  const db = getDb()
+  const finishedAt = status === 'running' || status === 'queued' ? null : "datetime('now')"
+  db.prepare(`
+    UPDATE service_discovery_runs
+    SET status = ?,
+        finished_at = ${finishedAt ?? 'NULL'},
+        error = ?,
+        stats_json = ?
+    WHERE id = ?
+  `).run(
+    status,
+    options?.error ?? null,
+    options?.statsJson ? JSON.stringify(options.statsJson) : null,
+    runId,
+  )
+  return getDiscoveryRunById(runId)
+}
+
+export function getLatestDiscoveryRunForService(serviceId: string): ServiceDiscoveryRun | undefined {
+  return getDb()
+    .prepare(`
+      SELECT * FROM service_discovery_runs
+      WHERE service_id = ?
+      ORDER BY started_at DESC
+      LIMIT 1
+    `)
+    .get(serviceId) as ServiceDiscoveryRun | undefined
+}
+
+function getDiscoveryRunById(id: string): ServiceDiscoveryRun | undefined {
+  return getDb()
+    .prepare('SELECT * FROM service_discovery_runs WHERE id = ?')
+    .get(id) as ServiceDiscoveryRun | undefined
 }
 
 // ---------------------------------------------------------------------------
