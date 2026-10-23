@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Local-first privacy policy intelligence dashboard",
   "type": "module",
+  "engines": {
+    "node": ">=24.22.1"
+  },
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
     "build": "tsc -p tsconfig.build.json",

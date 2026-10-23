@@ -39,7 +39,7 @@ data/        — local persistent store (gitignored — created on first run)
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24.22.1+ (see `.nvmrc`)
 - An Anthropic API key (or configure another provider)
 
 ### Setup
